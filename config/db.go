@@ -7,7 +7,7 @@ import (
   "os"
 
 
-  "github.com/joho/godotenv"
+  // "github.com/joho/godotenv"
   _ "github.com/lib/pq"
 )
 
@@ -19,11 +19,11 @@ func InitDB() {
   var err error
 
 
-  //Load environment variables from .env file
-  err = godotenv.Load()
-  if err != nil {
-  log.Fatal("Error loading .env file")
-  }
+  // Load environment variables from .env file
+  // err = godotenv.Load()
+  // if err != nil {
+    // log.Fatal("Error loading .env file")
+  // }
 
 
   // Get environment variables
