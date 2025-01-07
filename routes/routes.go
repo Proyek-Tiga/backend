@@ -38,5 +38,8 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/tiket/{id}", controller.JWTAuth(controller.UpdateTiket)).Methods("PUT")
 	router.HandleFunc("/api/tiket/{id}", controller.JWTAuth(controller.DeleteTiket)).Methods("DELETE")
 
+	// Request
+	router.HandleFunc("/api/request", controller.JWTAuth(controller.AddRequestLokasi)).Methods("POST")
+
 	return router
 }
