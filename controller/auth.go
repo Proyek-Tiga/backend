@@ -180,3 +180,48 @@ func JWTAuth(next http.HandlerFunc) http.HandlerFunc {
   })
 }
 
+// GetUserByToken retrieves the logged-in user's data
+func GetUser(w http.ResponseWriter, r *http.Request) {
+  // Get token from Authorization header
+  authHeader := r.Header.Get("Authorization")
+  if authHeader == "" {
+    http.Error(w, "Authorization header is missing", http.StatusUnauthorized)
+    return
+  }
+
+
+  // Extract token from "Bearer <token>"
+  tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+
+  // Parse and validate token
+  claims := &Claims{}
+  token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+    return jwtKey, nil
+  })
+  if err != nil || !token.Valid {
+    http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+    return
+  }
+
+
+  // Get user data from database
+  var user model.User
+  err = config.DB.QueryRow(
+    "SELECT user_id, name, email, role_id, created_at FROM users WHERE email = $1",
+    claims.Email,
+  ).Scan(&user.UserID, &user.Name, &user.Email, &user.RoleID, &user.CreatedAt)
+  if err != nil {
+    if err == sql.ErrNoRows {
+      http.Error(w, "User not found", http.StatusNotFound)
+      return
+    }
+    http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+    return
+  }
+
+
+  // Return user data as JSON
+  w.Header().Set("Content-Type", "application/json")
+  json.NewEncoder(w).Encode(user)
+}

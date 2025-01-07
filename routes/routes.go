@@ -31,6 +31,9 @@ func SetupRouter() *mux.Router {
   router.HandleFunc("/api/role/{id}", controller.JWTAuth(controller.UpdateRole)).Methods("PUT")
   router.HandleFunc("/api/role/{id}", controller.JWTAuth(controller.DeleteRole)).Methods("DELETE")
 
+  //USER
+  router.HandleFunc("/api/profile", controller.JWTAuth(controller.GetUser)).Methods("GET")
+  
   return router
 }
 
