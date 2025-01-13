@@ -6,6 +6,7 @@ type Konser struct {
 	KonserID      string    `json:"konser_id"`
 	UserID        string    `json:"user_id"`
 	LokasiID      string    `json:"lokasi_id"`
+	TiketID       string    `json:"tiket_id"`
 	NamaKonser    string    `json:"nama_konser"`
 	TanggalKonser time.Time `json:"tanggal_konser"`
 	JumlahTiket   int       `json:"jumlah_tiket"`
