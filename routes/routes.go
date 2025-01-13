@@ -41,5 +41,15 @@ func SetupRouter() *mux.Router {
 	// Request
 	router.HandleFunc("/api/request", controller.JWTAuth(controller.AddRequestLokasi)).Methods("POST")
 
+	// KONSER
+	router.HandleFunc("/api/konser", controller.JWTAuth(controller.AddKonser)).Methods("POST")
+
+	// USER BY ROLE
+	router.HandleFunc("/api/users", controller.GetUsersByRole).Methods("GET")
+	// CRUD USERS
+	router.HandleFunc("/api/users", controller.JWTAuth(controller.CreateUser)).Methods("POST")
+	router.HandleFunc("/api/users/{id}", controller.JWTAuth(controller.UpdateUser)).Methods("PUT")
+	router.HandleFunc("/api/users/{id}", controller.JWTAuth(controller.DeleteUser)).Methods("DELETE")
+
 	return router
 }
