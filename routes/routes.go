@@ -48,8 +48,6 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/konser",controller.GetAllKonser).Methods("GET")
 	router.HandleFunc("/api/konser/{id}",controller.GetKonserByID).Methods("GET")
 
-	
-
 	// USER BY ROLE
 	router.HandleFunc("/api/users", controller.GetUsersByRole).Methods("GET")
 	// CRUD USERS
