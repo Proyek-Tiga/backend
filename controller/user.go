@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
+
 	"project-tiket/config"
 	"project-tiket/model"
 
@@ -67,6 +69,36 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Berikan respons sukses
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "User created successfully"})
+}
+
+func GetUserById(w http.ResponseWriter, r *http.Request) {
+	// Ambil ID dari parameter URL
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	// Query ke database
+	query := `
+		SELECT user_id, role_id, name, email, created_at, updated_at
+		FROM users
+		WHERE user_id = $1`
+	row := config.DB.QueryRow(query, id)
+
+	// Deklarasi variabel untuk menampung data user
+	var user model.User
+	err := row.Scan(&user.UserID, &user.RoleID, &user.Name, &user.Email, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Error querying database: "+err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Kirim response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }
 
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
