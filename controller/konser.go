@@ -18,19 +18,35 @@ func AddKonser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil jumlah tiket dari lokasi yang dipilih
+	var tiketLokasi int
+	queryLokasi := `SELECT tiket FROM lokasi WHERE lokasi_id = $1`
+	err := config.DB.QueryRow(queryLokasi, konser.LokasiID).Scan(&tiketLokasi)
+	if err != nil {
+		http.Error(w, "Failed to fetch ticket count for the location: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Tetapkan jumlah tiket konser sesuai dengan tiket di lokasi
+	konser.Tiket = tiketLokasi
+
+	// Tetapkan status konser menjadi "pending"
+	konser.Status = "pending"
+
+	// Query untuk menambahkan konser
 	query := `
-    INSERT INTO konser (user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, jumlah_tiket, harga, image, jenis_bank, atas_nama, rekening, status, created_at, updated_at)
+    INSERT INTO konser (user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, tiket, harga, image, jenis_bank, atas_nama, rekening, status, created_at, updated_at)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
     RETURNING konser_id`
 
 	var id string
-	err := config.DB.QueryRow(query, 
+	err = config.DB.QueryRow(query, 
 		konser.UserID, 
 		konser.LokasiID,
 		konser.TiketID,
 		konser.NamaKonser,
 		konser.TanggalKonser, 
-		konser.JumlahTiket, 
+		konser.Tiket, 
 		konser.Harga, 
 		konser.Image, 
 		konser.JenisBank, 
@@ -51,6 +67,7 @@ func AddKonser(w http.ResponseWriter, r *http.Request) {
 		"id":      id,
 	})
 }
+
 
 func UpdateKonser(w http.ResponseWriter, r *http.Request) {
 	// Parse ID from the URL
