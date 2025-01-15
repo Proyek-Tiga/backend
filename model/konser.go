@@ -8,7 +8,7 @@ type Konser struct {
 	LokasiID      string    `json:"lokasi_id"`
 	TiketID       string    `json:"tiket_id"`
 	NamaKonser    string    `json:"nama_konser"`
-	TanggalKonser time.Time `json:"tanggal_konser"`
+	TanggalKonser string `json:"tanggal_konser"`
 	JumlahTiket   int       `json:"jumlah_tiket"`
 	Harga         int       `json:"harga"`
 	Image         string    `json:"image"`

@@ -272,40 +272,51 @@ func UpdateKonserStatus(w http.ResponseWriter, r *http.Request) {
 
 // GetApprovedConcerts menampilkan konser dengan status "approved"
 func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
-    var konser []model.Konser
+	var concerts []model.Konser
 
-    // Query untuk mengambil konser dengan status "approved"
-	query := `SELECT konser_id, user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, 
-	jumlah_tiket, harga, image, jenis_bank, atas_nama, rekening, status, 
-	created_at, updated_at FROM konser WHERE status = $1`
+	// Query untuk mengambil data konser dengan status "approved"
+	query := `
+			SELECT * FROM konser WHERE status = $1`
+
 	rows, err := config.DB.Query(query, "approved")
-    if err != nil {
-        http.Error(w, "Failed to fetch approved concerts: "+err.Error(), http.StatusInternalServerError)
-        return
-    }
-    defer rows.Close()
+	if err != nil {
+		http.Error(w, "Failed to fetch approved concerts: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
-    for rows.Next() {
-        var item model.Konser
-        err := rows.Scan(
-            &item.KonserID, &item.UserID, &item.LokasiID, &item.TiketID,
-            &item.NamaKonser, &item.TanggalKonser, &item.JumlahTiket,
-            &item.Harga, &item.Image, &item.JenisBank, &item.AtasNama,
-            &item.Rekening, &item.Status, &item.CreatedAt, &item.UpdatedAt,
-        )
-        if err != nil {
-            http.Error(w, "Failed to scan concert data: "+err.Error(), http.StatusInternalServerError)
-            return
-        }
-        konser = append(konser, item)
-    }
+	for rows.Next() {
+		var concert model.Konser
+		err := rows.Scan(
+			&concert.KonserID,
+			&concert.UserID,
+			&concert.LokasiID,
+			&concert.NamaKonser,
+			&concert.TanggalKonser,
+			&concert.JumlahTiket,
+			&concert.Harga,
+			&concert.Image,
+			&concert.JenisBank,
+			&concert.AtasNama,
+			&concert.Rekening,
+			&concert.Status,
+			&concert.CreatedAt,
+			&concert.UpdatedAt,
+			&concert.TiketID,
+		)
+		if err != nil {
+			http.Error(w, "Failed to scan concert data: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		concerts = append(concerts, concert)
+	}
 
-    if len(konser) == 0 {
-        w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode([]model.Konser{})
-        return
-    }
+	if len(concerts) == 0 {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]model.Konser{})
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(konser)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(concerts)
 }
