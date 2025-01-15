@@ -216,3 +216,96 @@ func GetKonserByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func UpdateKonserStatus(w http.ResponseWriter, r *http.Request) {
+	// Ambil ID konser dari URL parameter
+	konserID := mux.Vars(r)["id"]
+
+	// Define struktur untuk status baru
+	var status struct {
+		Status string `json:"status"`
+	}
+
+	// Decode JSON body untuk mendapatkan status baru
+	if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	// Pastikan status yang diberikan valid
+	if status.Status != "pending" && status.Status != "approved" {
+		http.Error(w, "Invalid status", http.StatusBadRequest)
+		return
+	}
+
+	// Mulai transaksi untuk memastikan atomicity
+	tx, err := config.DB.Begin()
+	if err != nil {
+		http.Error(w, "Failed to start transaction: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update status konser
+	query := `UPDATE konser SET status = $1 WHERE konser_id = $2 AND status = 'pending'`
+	_, err = tx.Exec(query, status.Status, konserID)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Failed to update status: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Jika status yang diberikan adalah "approved", lakukan penanganan lebih lanjut (misalnya menambah tiket atau tindakan lainnya)
+	if status.Status == "approved" {
+		// Anda bisa menambahkan logika lebih lanjut untuk "approved" di sini
+		// Misalnya, menambahkan data ke tabel lain jika perlu
+	}
+
+	// Commit transaksi jika semuanya berjalan lancar
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to commit transaction: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Send success response
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Konser status updated successfully"})
+}
+
+// GetApprovedConcerts menampilkan konser dengan status "approved"
+func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
+    var konser []model.Konser
+
+    // Query untuk mengambil konser dengan status "approved"
+	query := `SELECT konser_id, user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, 
+	jumlah_tiket, harga, image, jenis_bank, atas_nama, rekening, status, 
+	created_at, updated_at FROM konser WHERE status = $1`
+	rows, err := config.DB.Query(query, "approved")
+    if err != nil {
+        http.Error(w, "Failed to fetch approved concerts: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var item model.Konser
+        err := rows.Scan(
+            &item.KonserID, &item.UserID, &item.LokasiID, &item.TiketID,
+            &item.NamaKonser, &item.TanggalKonser, &item.JumlahTiket,
+            &item.Harga, &item.Image, &item.JenisBank, &item.AtasNama,
+            &item.Rekening, &item.Status, &item.CreatedAt, &item.UpdatedAt,
+        )
+        if err != nil {
+            http.Error(w, "Failed to scan concert data: "+err.Error(), http.StatusInternalServerError)
+            return
+        }
+        konser = append(konser, item)
+    }
+
+    if len(konser) == 0 {
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode([]model.Konser{})
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(konser)
+}

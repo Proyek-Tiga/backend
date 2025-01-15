@@ -45,9 +45,11 @@ func SetupRouter() *mux.Router {
 	// KONSER
 	router.HandleFunc("/api/konser", controller.JWTAuth(controller.AddKonser)).Methods("POST")
 	router.HandleFunc("/api/konser/{id}", controller.JWTAuth(controller.UpdateKonser)).Methods("PUT")
+	router.HandleFunc("/api/konser/{id}/status", controller.UpdateKonserStatus).Methods("PUT")
 	router.HandleFunc("/api/konser",controller.GetAllKonser).Methods("GET")
 	router.HandleFunc("/api/konser/{id}",controller.GetKonserByID).Methods("GET")
-
+	router.HandleFunc("/api/konser/approved", controller.GetApprovedConcerts).Methods("GET")
+	
 	// USERS BY ROLE
 	router.HandleFunc("/api/users", controller.GetUsersByRole).Methods("GET")
 	router.HandleFunc("/api/users/{id}", controller.GetUserById).Methods("GET")
