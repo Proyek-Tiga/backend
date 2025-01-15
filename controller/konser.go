@@ -28,16 +28,16 @@ func AddKonser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Tetapkan jumlah tiket konser sesuai dengan tiket di lokasi
-	konser.Tiket = tiketLokasi
+	konser.JumlahTiket = tiketLokasi
 
 	// Tetapkan status konser menjadi "pending"
 	konser.Status = "pending"
 
 	// Query untuk menambahkan konser
 	query := `
-    INSERT INTO konser (user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, tiket, harga, image, jenis_bank, atas_nama, rekening, status, created_at, updated_at)
+	INSERT INTO konser (user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, jumlah_tiket, harga, image, jenis_bank, atas_nama, rekening, status, created_at, updated_at)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
-    RETURNING konser_id`
+	RETURNING konser_id`
 
 	var id string
 	err = config.DB.QueryRow(query, 
@@ -46,7 +46,7 @@ func AddKonser(w http.ResponseWriter, r *http.Request) {
 		konser.TiketID,
 		konser.NamaKonser,
 		konser.TanggalKonser, 
-		konser.Tiket, 
+		konser.JumlahTiket, 
 		konser.Harga, 
 		konser.Image, 
 		konser.JenisBank, 
