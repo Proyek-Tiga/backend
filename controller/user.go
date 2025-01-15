@@ -21,7 +21,7 @@ func GetUsersByRole(w http.ResponseWriter, r *http.Request) {
 
 	// Query ke database dengan PostgreSQL-style placeholder
 	query := `
-		SELECT u.name, u.email
+		SELECT u.user_id, u.name, u.email
 		FROM users u
 		JOIN role r ON u.role_id = r.role_id
 		WHERE r.role_name = $1`
@@ -36,7 +36,7 @@ func GetUsersByRole(w http.ResponseWriter, r *http.Request) {
 	var users []model.UserResponse
 	for rows.Next() {
 		var user model.UserResponse
-		if err := rows.Scan(&user.Name, &user.Email); err != nil {
+		if err := rows.Scan(&user.UserID, &user.Name, &user.Email); err != nil {
 			http.Error(w, "Error scanning data: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
