@@ -19,14 +19,6 @@ import (
 var jwtKey = []byte("your_secret_key")
 
 
-type Claims struct {
-  Email string `json:"email"`
-  jwt.StandardClaims
-}
-
-
-
-
 func Register(w http.ResponseWriter, r *http.Request) {
   var user model.User
 
@@ -89,12 +81,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
   var hashedPassword string
   var roleID string
 
+
   // Decode request body
   err := json.NewDecoder(r.Body).Decode(&user)
   if err != nil {
       http.Error(w, "Invalid request payload", http.StatusBadRequest)
       return
   }
+
 
   // Query database untuk mendapatkan user_id, email, hashed password, dan role_id
   err = config.DB.QueryRow(
@@ -110,6 +104,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
       return
   }
 
+
   // Bandingkan password mentah dengan hashed password dari database
   err = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(user.Password))
   if err != nil {
@@ -117,14 +112,17 @@ func Login(w http.ResponseWriter, r *http.Request) {
       return
   }
 
+
   // Generate JWT token
   expirationTime := time.Now().Add(60 * time.Minute)
   claims := &Claims{
       Email: user.Email,
+      UserID: user.UserID,
       StandardClaims: jwt.StandardClaims{
           ExpiresAt: expirationTime.Unix(),
       },
   }
+
 
   token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
   tokenString, err := token.SignedString(jwtKey)
@@ -132,6 +130,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
       http.Error(w, "Internal server error", http.StatusInternalServerError)
       return
   }
+
 
   // Return response dengan token dan role_id
   w.Header().Set("Content-Type", "application/json")
@@ -147,6 +146,13 @@ func Login(w http.ResponseWriter, r *http.Request) {
   }
 }
 
+
+
+type Claims struct {
+  Email string `json:"email"`
+  UserID string `json:"user_id"`
+  jwt.StandardClaims
+}
 
 func ValidateToken(tokenString string) (bool, error) {
   token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

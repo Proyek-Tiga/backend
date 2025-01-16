@@ -1,8 +1,15 @@
 package controller
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"strconv"
+	"time"
 
 	"project-tiket/config"
 	"project-tiket/model"
@@ -12,61 +19,132 @@ import (
 )
 
 func AddKonser(w http.ResponseWriter, r *http.Request) {
-	var konser model.Konser
-	if err := json.NewDecoder(r.Body).Decode(&konser); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Ambil jumlah tiket dari lokasi yang dipilih
-	var tiketLokasi int
-	queryLokasi := `SELECT tiket FROM lokasi WHERE lokasi_id = $1`
-	err := config.DB.QueryRow(queryLokasi, konser.LokasiID).Scan(&tiketLokasi)
+ 
+	// Parse form-data
+	err := r.ParseMultipartForm(10 << 20) // Maksimum ukuran file 10MB
 	if err != nil {
-		http.Error(w, "Failed to fetch ticket count for the location: "+err.Error(), http.StatusInternalServerError)
-		return
+	  http.Error(w, "Unable to parse form-data: "+err.Error(), http.StatusBadRequest)
+	  return
 	}
-
-	// Tetapkan jumlah tiket konser sesuai dengan tiket di lokasi
-	konser.JumlahTiket = tiketLokasi
-
-	// Tetapkan status konser menjadi "pending"
-	konser.Status = "pending"
-
-	// Query untuk menambahkan konser
+  
+  
+	// Ambil data teks dari form-data
+	userID := r.FormValue("user_id")
+	lokasiID := r.FormValue("lokasi_id")
+	tiketID := r.FormValue("tiket_id")
+	namaKonser := r.FormValue("nama_konser")
+	tanggalKonser := r.FormValue("tanggal_konser")
+	harga, _ := strconv.Atoi(r.FormValue("harga"))
+	jenisBank := r.FormValue("jenis_bank")
+	atasNama := r.FormValue("atas_nama")
+	rekening := r.FormValue("rekening")
+  
+  
+	// Ambil file dari form-data
+	file, _, err := r.FormFile("image")
+	if err != nil {
+	  http.Error(w, "Unable to retrieve the image: "+err.Error(), http.StatusBadRequest)
+	  return
+	}
+	defer file.Close()
+  
+  
+	// Baca data file gambar
+	fileBytes, err := ioutil.ReadAll(file)
+	if err != nil {
+	  http.Error(w, "Unable to read the image file: "+err.Error(), http.StatusInternalServerError)
+	  return
+	}
+  
+  
+	// Step 1: Upload gambar ke GitHub
+	githubToken := os.Getenv("GH_ACCESS_TOKEN") // Ganti dengan token Anda
+	repoOwner := "Proyek-Tiga"                                // Nama organisasi GitHub
+	repoName := "images"                                      // Nama repositori
+	filePath := fmt.Sprintf("konser/%d_%s.jpg", time.Now().Unix(), namaKonser)
+	uploadURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", repoOwner, repoName, filePath)
+  
+  
+	encodedImage := base64.StdEncoding.EncodeToString(fileBytes)
+	payload := map[string]string{
+	  "message": fmt.Sprintf("Add image for concert %s", namaKonser),
+	  "content": encodedImage,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+  
+  
+	req, _ := http.NewRequest("PUT", uploadURL, bytes.NewReader(payloadBytes))
+	req.Header.Set("Authorization", "Bearer "+githubToken)
+	req.Header.Set("Content-Type", "application/json")
+  
+  
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+	  http.Error(w, "Failed to upload image to GitHub: "+err.Error(), http.StatusInternalServerError)
+	  return
+	}
+	defer resp.Body.Close()
+  
+  
+	if resp.StatusCode != http.StatusCreated {
+	  body, _ := ioutil.ReadAll(resp.Body)
+	  http.Error(w, fmt.Sprintf("GitHub API error: %s", string(body)), http.StatusInternalServerError)
+	  return
+	}
+  
+  
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	imageURL := result["content"].(map[string]interface{})["download_url"].(string)
+  
+  
+	// Step 2: Ambil jumlah tiket dari lokasi
+	var jumlahTiket int
+	err = config.DB.QueryRow("SELECT tiket FROM lokasi WHERE lokasi_id = $1", lokasiID).Scan(&jumlahTiket)
+	if err != nil {
+	  http.Error(w, "Failed to retrieve ticket quantity from location: "+err.Error(), http.StatusInternalServerError)
+	  return
+	}
+  
+  
+	// Step 3: Simpan URL gambar dan data konser ke database
 	query := `
 	INSERT INTO konser (user_id, lokasi_id, tiket_id, nama_konser, tanggal_konser, jumlah_tiket, harga, image, jenis_bank, atas_nama, rekening, status, created_at, updated_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(), NOW())
 	RETURNING konser_id`
-
+  
+  
 	var id string
-	err = config.DB.QueryRow(query, 
-		konser.UserID, 
-		konser.LokasiID,
-		konser.TiketID,
-		konser.NamaKonser,
-		konser.TanggalKonser, 
-		konser.JumlahTiket, 
-		konser.Harga, 
-		konser.Image, 
-		konser.JenisBank, 
-		konser.AtasNama, 
-		konser.Rekening, 
-		konser.Status, 
+	err = config.DB.QueryRow(query,
+	  userID,
+	  lokasiID,
+	  tiketID,
+	  namaKonser,
+	  tanggalKonser,
+	  jumlahTiket, // Menggunakan jumlah tiket dari lokasi
+	  harga,
+	  imageURL, // URL gambar dari GitHub
+	  jenisBank,
+	  atasNama,
+	  rekening,
 	).Scan(&id)
-
+  
+  
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	  http.Error(w, "Failed to save concert data: "+err.Error(), http.StatusInternalServerError)
+	  return
 	}
-
-	// Return the newly created ID in the response
+  
+  
+	// Return the newly created ID and image URL in the response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Konser added successfully",
-		"id":      id,
+	  "message": "Konser added successfully",
+	  "id":      id,
+	  "image":   imageURL,
 	})
-}
+  }
+  
 
 
 func UpdateKonser(w http.ResponseWriter, r *http.Request) {
