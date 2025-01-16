@@ -348,13 +348,24 @@ func UpdateKonserStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Konser status updated successfully"})
 }
 
+
 // GetApprovedConcerts menampilkan konser dengan status "approved"
 func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
-	var concerts []model.Konser
+	var concerts []struct {
+		model.Konser
+		Lokasi model.Lokasi `json:"lokasi"`
+	}
 
-	// Query untuk mengambil data konser dengan status "approved"
+	// Query untuk mengambil data konser dengan status "approved" beserta data lokasi
 	query := `
-			SELECT * FROM konser WHERE status = $1`
+		SELECT 
+			k.konser_id, k.user_id, k.lokasi_id, k.nama_konser, k.tanggal_konser, k.jumlah_tiket, 
+			k.harga, k.image, k.jenis_bank, k.atas_nama, k.rekening, k.status, 
+			k.created_at, k.updated_at, k.tiket_id,
+			l.lokasi_id, l.lokasi, l.tiket, l.created_at, l.updated_at
+		FROM konser k
+		JOIN lokasi l ON k.lokasi_id = l.lokasi_id
+		WHERE k.status = $1`
 
 	rows, err := config.DB.Query(query, "approved")
 	if err != nil {
@@ -364,23 +375,32 @@ func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var concert model.Konser
+		var concert struct {
+			model.Konser
+			Lokasi model.Lokasi `json:"lokasi"`
+		}
+
 		err := rows.Scan(
-			&concert.KonserID,
-			&concert.UserID,
-			&concert.LokasiID,
-			&concert.NamaKonser,
-			&concert.TanggalKonser,
-			&concert.JumlahTiket,
-			&concert.Harga,
-			&concert.Image,
-			&concert.JenisBank,
-			&concert.AtasNama,
-			&concert.Rekening,
-			&concert.Status,
-			&concert.CreatedAt,
-			&concert.UpdatedAt,
-			&concert.TiketID,
+			&concert.Konser.KonserID,
+			&concert.Konser.UserID,
+			&concert.Konser.LokasiID,
+			&concert.Konser.NamaKonser,
+			&concert.Konser.TanggalKonser,
+			&concert.Konser.JumlahTiket,
+			&concert.Konser.Harga,
+			&concert.Konser.Image,
+			&concert.Konser.JenisBank,
+			&concert.Konser.AtasNama,
+			&concert.Konser.Rekening,
+			&concert.Konser.Status,
+			&concert.Konser.CreatedAt,
+			&concert.Konser.UpdatedAt,
+			&concert.Konser.TiketID,
+			&concert.Lokasi.LokasiID,
+			&concert.Lokasi.Lokasi,
+			&concert.Lokasi.Tiket,
+			&concert.Lokasi.CreatedAt,
+			&concert.Lokasi.UpdatedAt,
 		)
 		if err != nil {
 			http.Error(w, "Failed to scan concert data: "+err.Error(), http.StatusInternalServerError)
@@ -391,7 +411,10 @@ func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
 
 	if len(concerts) == 0 {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]model.Konser{})
+		json.NewEncoder(w).Encode([]struct {
+			model.Konser
+			Lokasi model.Lokasi `json:"lokasi"`
+		}{})
 		return
 	}
 
