@@ -18,12 +18,12 @@ func AddTiket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-    INSERT INTO tiket (tiket_id, konser_id, nama_tiket, harga, created_at, updated_at)
+    INSERT INTO tiket (konser_id, nama_tiket, harga, created_at, updated_at)
     VALUES ($1, $2, $3, NOW(), NOW())
     RETURNING tiket_id`
 
 	var id string
-	err := config.DB.QueryRow(query, tiket.TiketID, tiket.KonserID, tiket.NamaTiket, tiket.Harga).Scan(&id)
+	err := config.DB.QueryRow(query, tiket.KonserID, tiket.NamaTiket, tiket.Harga).Scan(&id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -36,8 +36,9 @@ func AddTiket(w http.ResponseWriter, r *http.Request) {
 		"id":      id,
 	})
 }
+
 func GetTiket(w http.ResponseWriter, r *http.Request) {
-	rows, err := config.DB.Query("SELECT * FROM tiket")
+	rows, err := config.DB.Query("SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -48,7 +49,7 @@ func GetTiket(w http.ResponseWriter, r *http.Request) {
 	var tiket []model.Tiket
 	for rows.Next() {
 		var tikets model.Tiket
-		if err := rows.Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt); err != nil {
+		if err := rows.Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -72,12 +73,12 @@ func GetTiketByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query database untuk mendapatkan data lokasi berdasarkan UUID
+	// Query database untuk mendapatkan data tiket berdasarkan UUID
 	var tikets model.Tiket
 	err := config.DB.QueryRow(
-		"SELECT * FROM tiket WHERE tiket_id = $1",
+		"SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket WHERE tiket_id = $1",
 		id,
-	).Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt)
+	).Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt)
 	if err != nil {
 		http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -131,6 +132,7 @@ func UpdateTiket(w http.ResponseWriter, r *http.Request) {
 		"message": "Tiket updated successfully",
 	})
 }
+
 func DeleteTiket(w http.ResponseWriter, r *http.Request) {
 	// Extract ID from URL
 	vars := mux.Vars(r)
@@ -168,4 +170,30 @@ func DeleteTiket(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "tiket deleted successfully",
 	})
+}
+
+func GetTiketByKonser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, ok := vars["konser_id"]
+	if !ok {
+		http.Error(w, "ID not provided", http.StatusBadRequest)
+		return
+	}
+
+	// Query database untuk mendapatkan data tiket berdasarkan UUID konser
+	var tikets model.Tiket
+	err := config.DB.QueryRow(
+		"SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket WHERE konser_id = $1",
+		id,
+	).Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt)
+	if err != nil {
+		http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Berikan respons dalam format JSON
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(tikets); err != nil {
+		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
+	}
 }

@@ -37,6 +37,7 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/tiket/{id}", controller.GetTiketByID).Methods("GET")
 	router.HandleFunc("/api/tiket/{id}", controller.JWTAuth(controller.UpdateTiket)).Methods("PUT")
 	router.HandleFunc("/api/tiket/{id}", controller.JWTAuth(controller.DeleteTiket)).Methods("DELETE")
+	router.HandleFunc("/api/tiket/konser/{konser_id}", controller.GetTiketByKonser).Methods("GET")
 
 	// Request
 	router.HandleFunc("/api/request", controller.JWTAuth(controller.AddRequestLokasi)).Methods("POST")
@@ -46,8 +47,8 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/konser", controller.JWTAuth(controller.AddKonser)).Methods("POST")
 	router.HandleFunc("/api/konser/{id}", controller.JWTAuth(controller.UpdateKonser)).Methods("PUT")
 	router.HandleFunc("/api/konser/{id}/status", controller.UpdateKonserStatus).Methods("PUT")
-	router.HandleFunc("/api/konser",controller.GetAllKonser).Methods("GET")
-	router.HandleFunc("/api/konser/{id}",controller.GetKonserByID).Methods("GET")
+	router.HandleFunc("/api/konser", controller.GetAllKonser).Methods("GET")
+	router.HandleFunc("/api/konser/{id}", controller.GetKonserByID).Methods("GET")
 	router.HandleFunc("/api/konser-approved", controller.GetApprovedConcerts).Methods("GET")
 
 	// USERS BY ROLE
@@ -56,5 +57,13 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/users", controller.JWTAuth(controller.CreateUser)).Methods("POST")
 	router.HandleFunc("/api/users/{id}", controller.JWTAuth(controller.UpdateUser)).Methods("PUT")
 	router.HandleFunc("/api/users/{id}", controller.JWTAuth(controller.DeleteUser)).Methods("DELETE")
+
+	// TRANSAKSI
+	router.HandleFunc("/api/transaksi", controller.JWTAuth(controller.CreateTransaksi)).Methods("POST")
+	router.HandleFunc("/api/transaksi/{id}", controller.GetTransaksiByID).Methods("GET")
+
+	// PAYMENT
+	router.HandleFunc("/api/payment/{transaksi_id}", controller.JWTAuth(controller.CreatePayment)).Methods("POST")
+	router.HandleFunc("/api/webhook/midtrans", controller.MidtransWebhookHandler).Methods("POST")
 	return router
 }
