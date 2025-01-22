@@ -61,6 +61,7 @@ func SetupRouter() *mux.Router {
 	// TRANSAKSI
 	router.HandleFunc("/api/transaksi", controller.JWTAuth(controller.CreateTransaksi)).Methods("POST")
 	router.HandleFunc("/api/transaksi/{id}", controller.GetTransaksiByID).Methods("GET")
+	router.HandleFunc("/api/transaksi", controller.GetAllTransaksi).Methods("GET")
 
 	// PAYMENT
 	router.HandleFunc("/api/payment/{transaksi_id}", controller.JWTAuth(controller.CreatePayment)).Methods("POST")

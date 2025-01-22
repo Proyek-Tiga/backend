@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
@@ -38,22 +39,57 @@ func AddTiket(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTiket(w http.ResponseWriter, r *http.Request) {
-	rows, err := config.DB.Query("SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket")
+	rows, err := config.DB.Query(`
+	  SELECT
+		t.tiket_id,
+		t.konser_id,
+		t.nama_tiket,
+		t.jumlah_tiket,
+		t.harga,
+		t.created_at,
+		t.updated_at,
+		k.nama_konser
+	  FROM
+		tiket t
+	  JOIN
+		konser k ON t.konser_id = k.konser_id
+	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	defer rows.Close()
 
-	var tiket []model.Tiket
+	type TiketResponse struct {
+		TiketID     string  `json:"tiket_id"`
+		KonserID    string  `json:"konser_id"`
+		NamaTiket   string  `json:"nama_tiket"`
+		JumlahTiket int     `json:"jumlah_tiket"`
+		Harga       float64 `json:"harga"`
+		CreatedAt   string  `json:"created_at"`
+		UpdatedAt   string  `json:"updated_at"`
+		NamaKonser  string  `json:"nama_konser"`
+	}
+
+	var tiketData []TiketResponse
+
 	for rows.Next() {
-		var tikets model.Tiket
-		if err := rows.Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt); err != nil {
+		var tiket TiketResponse
+		err := rows.Scan(
+			&tiket.TiketID,
+			&tiket.KonserID,
+			&tiket.NamaTiket,
+			&tiket.JumlahTiket,
+			&tiket.Harga,
+			&tiket.CreatedAt,
+			&tiket.UpdatedAt,
+			&tiket.NamaKonser,
+		)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		tiket = append(tiket, tikets)
+		tiketData = append(tiketData, tiket)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -62,34 +98,74 @@ func GetTiket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tiket)
+	json.NewEncoder(w).Encode(tiketData)
 }
 
 func GetTiketByID(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, ok := vars["id"]
-	if !ok {
-		http.Error(w, "ID not provided", http.StatusBadRequest)
-		return
-	}
-
-	// Query database untuk mendapatkan data tiket berdasarkan UUID
-	var tikets model.Tiket
-	err := config.DB.QueryRow(
-		"SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket WHERE tiket_id = $1",
-		id,
-	).Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt)
+	// Mengambil tiket_id dari URL parameter
+	tiketID := mux.Vars(r)["id"]
+  
+  
+	// Menjalankan query untuk mengambil tiket berdasarkan tiket_id
+	row := config.DB.QueryRow(`
+	  SELECT
+		t.tiket_id,
+		t.konser_id,
+		t.nama_tiket,
+		t.jumlah_tiket,
+		t.harga,
+		t.created_at,
+		t.updated_at,
+		k.nama_konser
+	  FROM
+		tiket t
+	  JOIN
+		konser k ON t.konser_id = k.konser_id
+	  WHERE
+		t.tiket_id = $1
+	`, tiketID)
+  
+  
+	// Menyiapkan variabel untuk menyimpan hasil query
+	var tiket model.Tiket
+	var konser model.Konser
+  
+  
+	// Melakukan pemindaian hasil query ke dalam variabel tiket dan konser
+	err := row.Scan(
+	  &tiket.TiketID,
+	  &tiket.KonserID,
+	  &tiket.NamaTiket,
+	  &tiket.JumlahTiket,
+	  &tiket.Harga,
+	  &tiket.CreatedAt,
+	  &tiket.UpdatedAt,
+	  &konser.NamaKonser,
+	)
 	if err != nil {
-		http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
-		return
+	  if err == sql.ErrNoRows {
+		http.Error(w, "Tiket tidak ditemukan", http.StatusNotFound)
+	  } else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	  }
+	  return
 	}
-
-	// Berikan respons dalam format JSON
+  
+  
+	// Membuat response untuk tiket dengan hanya menampilkan nama konser
+	response := struct {
+	  model.Tiket
+	  Konser string `json:"konser"`
+	}{
+	  Tiket:  tiket,
+	  Konser: konser.NamaKonser,
+	}
+  
+  
+	// Mengirimkan response dalam format JSON
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(tikets); err != nil {
-		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
-	}
-}
+	json.NewEncoder(w).Encode(response)
+  }  
 
 func UpdateTiket(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

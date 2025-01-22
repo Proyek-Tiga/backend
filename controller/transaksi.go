@@ -151,3 +151,67 @@ func GetTransaksiByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(transaksi)
 }
+
+func GetAllTransaksi(w http.ResponseWriter, r *http.Request) {
+	// Query untuk mendapatkan data dari tabel payment dan transaksi
+	rows, err := config.DB.Query(`
+	  SELECT
+		t.transaksi_id, t.user_id, t.tiket_id, t.qty, t.harga, t.qrcode, t.updated_at, t.created_at,
+		p.payment_id, p.order_id, p.user_id, p.gross_amount, p.snap_url, p.status, p.created_at
+	  FROM transaksi t
+	  INNER JOIN payment p ON t.transaksi_id = p.order_id
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var result []map[string]interface{} // Menampung hasil sebagai map untuk fleksibilitas
+
+	// Iterasi hasil query
+	for rows.Next() {
+		var transaksi model.Transaksi
+		var payment model.Payment
+
+		err := rows.Scan(
+			&transaksi.TransaksiID,
+			&transaksi.UserID,
+			&transaksi.TiketID,
+			&transaksi.Qty,
+			&transaksi.Harga,
+			&transaksi.QRCode,
+			&transaksi.UpdatedAt,
+			&transaksi.CreatedAt,
+			&payment.PaymentID,
+			&payment.OrderID,
+			&payment.UserID,
+			&payment.GrossAmount,
+			&payment.SnapURL,
+			&payment.Status,
+			&payment.CreatedAt,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Gabungkan data transaksi dan payment ke dalam map
+		combined := map[string]interface{}{
+			"transaksi": transaksi,
+			"payment":   payment,
+		}
+		result = append(result, combined)
+	}
+
+	// Cek error pada iterasi rows
+	if err := rows.Err(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Kirim response JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+}
