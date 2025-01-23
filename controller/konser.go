@@ -143,54 +143,62 @@ func UpdateKonser(w http.ResponseWriter, r *http.Request) {
 	harga, _ := strconv.Atoi(r.FormValue("harga"))
 
 	// Ambil file dari form-data (gambar)
-	file, _, err := r.FormFile("image")
+	file, fileHeader, err := r.FormFile("image")
+	var imageURL, status string
+
+	// Ambil status konser dari database
+	err = config.DB.QueryRow("SELECT image, status FROM konser WHERE konser_id = $1", id).Scan(&imageURL, &status)
 	if err != nil {
-		http.Error(w, "Unable to retrieve the image: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Baca data file gambar
-	fileBytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		http.Error(w, "Unable to read the image file: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve existing data: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Step 1: Upload gambar ke GitHub
-	githubToken := os.Getenv("GH_ACCESS_TOKEN") // Ganti dengan token Anda
-	repoOwner := "Proyek-Tiga"                  // Nama organisasi GitHub
-	repoName := "images"                        // Nama repositori
-	filePath := fmt.Sprintf("konser/%d_%s.jpg", time.Now().Unix(), namaKonser)
-	uploadURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", repoOwner, repoName, filePath)
+	// Jika gambar baru diunggah
+	if err != http.ErrMissingFile && fileHeader != nil {
+		defer file.Close()
 
-	encodedImage := base64.StdEncoding.EncodeToString(fileBytes)
-	payload := map[string]string{
-		"message": fmt.Sprintf("Update image for concert %s", namaKonser),
-		"content": encodedImage,
+		// Baca data file gambar
+		fileBytes, err := ioutil.ReadAll(file)
+		if err != nil {
+			http.Error(w, "Unable to read the image file: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Step 1: Upload gambar ke GitHub
+		githubToken := os.Getenv("GH_ACCESS_TOKEN") // Ganti dengan token Anda
+		repoOwner := "Proyek-Tiga"                  // Nama organisasi GitHub
+		repoName := "images"                        // Nama repositori
+		filePath := fmt.Sprintf("konser/%d_%s.jpg", time.Now().Unix(), namaKonser)
+		uploadURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", repoOwner, repoName, filePath)
+
+		encodedImage := base64.StdEncoding.EncodeToString(fileBytes)
+		payload := map[string]string{
+			"message": fmt.Sprintf("Update image for concert %s", namaKonser),
+			"content": encodedImage,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+
+		req, _ := http.NewRequest("PUT", uploadURL, bytes.NewReader(payloadBytes))
+		req.Header.Set("Authorization", "Bearer "+githubToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, "Failed to upload image to GitHub: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := ioutil.ReadAll(resp.Body)
+			http.Error(w, fmt.Sprintf("GitHub API error: %s", string(body)), http.StatusInternalServerError)
+			return
+		}
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		imageURL = result["content"].(map[string]interface{})["download_url"].(string)
 	}
-	payloadBytes, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequest("PUT", uploadURL, bytes.NewReader(payloadBytes))
-	req.Header.Set("Authorization", "Bearer "+githubToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, "Failed to upload image to GitHub: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := ioutil.ReadAll(resp.Body)
-		http.Error(w, fmt.Sprintf("GitHub API error: %s", string(body)), http.StatusInternalServerError)
-		return
-	}
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-	imageURL := result["content"].(map[string]interface{})["download_url"].(string)
 
 	// Step 2: Update jumlah tiket berdasarkan lokasi
 	var jumlahTiket int
@@ -202,17 +210,17 @@ func UpdateKonser(w http.ResponseWriter, r *http.Request) {
 
 	// Step 3: Update data konser di database
 	query := `
-		UPDATE konser
-		SET user_id = $1, 
-			lokasi_id = $2,
-			nama_konser = $3, 
-			tanggal_konser = $4, 
-			jumlah_tiket = $5, 
-			harga = $6, 
-			image = $7, 
-			status = $8, 
-			updated_at = NOW()
-		WHERE konser_id = $9`
+	  UPDATE konser
+	  SET user_id = $1,
+		lokasi_id = $2,
+		nama_konser = $3,
+		tanggal_konser = $4,
+		jumlah_tiket = $5,
+		harga = $6,
+		image = $7,
+		status = $8,
+		updated_at = NOW()
+	  WHERE konser_id = $9`
 
 	_, err = config.DB.Exec(query,
 		userID,
@@ -221,9 +229,9 @@ func UpdateKonser(w http.ResponseWriter, r *http.Request) {
 		tanggalKonser,
 		jumlahTiket, // Menggunakan jumlah tiket dari lokasi
 		harga,
-		imageURL,  // URL gambar dari GitHub
-		"pending", // Status, bisa disesuaikan jika diperlukan
-		id,        // ID konser yang akan diupdate
+		imageURL, // URL gambar dari GitHub atau gambar lama dari database
+		status,   // Menggunakan status lama dari database
+		id,       // ID konser yang akan diupdate
 	)
 
 	if err != nil {
@@ -456,4 +464,57 @@ func GetApprovedConcerts(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(concerts)
+}
+
+func DeleteKonser(w http.ResponseWriter, r *http.Request) {
+	// Ambil konser_id dari URL parameter
+	vars := mux.Vars(r)
+	konserID, ok := vars["id"]
+	if !ok {
+		http.Error(w, "ID not provided", http.StatusBadRequest)
+		return
+	}
+
+	// Mulai transaksi database
+	tx, err := config.DB.Begin()
+	if err != nil {
+		http.Error(w, "Gagal memulai transaksi: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hapus tiket yang terkait dengan konser
+	deleteTiketQuery := `
+	  DELETE FROM tiket
+	  WHERE konser_id = $1`
+	_, err = tx.Exec(deleteTiketQuery, konserID)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Gagal menghapus tiket: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hapus konser
+	deleteKonserQuery := `
+	  DELETE FROM konser
+	  WHERE konser_id = $1`
+	_, err = tx.Exec(deleteKonserQuery, konserID)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Gagal menghapus konser: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Commit transaksi
+	err = tx.Commit()
+	if err != nil {
+		http.Error(w, "Gagal menyelesaikan transaksi: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Kirim response ke client
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Konser dengan ID %s dan tiket terkait berhasil dihapus", konserID),
+	})
 }
