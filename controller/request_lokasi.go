@@ -130,3 +130,54 @@ func UpdateRequestStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Request status updated successfully"})
 }
+
+func GetRequest(w http.ResponseWriter, r *http.Request) {
+	// Query data dari tabel request_lokasi
+	rows, err := config.DB.Query(`
+	  SELECT
+		request_id, user_id, nama_lokasi, status, kapasitas, created_at, updated_at
+	  FROM request_lokasi
+	`)
+	if err != nil {
+	  http.Error(w, err.Error(), http.StatusInternalServerError)
+	  return
+	}
+	defer rows.Close()
+  
+  
+	var requests []model.RequestLokasi
+  
+  
+	// Iterasi setiap baris dari hasil query
+	for rows.Next() {
+	  var request model.RequestLokasi
+	  err := rows.Scan(
+		&request.RequestID,
+		&request.UserID,
+		&request.NamaLokasi,
+		&request.Status,
+		&request.Kapasitas,
+		&request.CreatedAt,
+		&request.UpdatedAt,
+	  )
+	  if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	  }
+	  requests = append(requests, request)
+	}
+  
+  
+	// Cek jika ada error saat iterasi baris
+	if err := rows.Err(); err != nil {
+	  http.Error(w, err.Error(), http.StatusInternalServerError)
+	  return
+	}
+  
+  
+	// Mengatur header dan mengirimkan response JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(requests)
+  }
+  

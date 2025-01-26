@@ -153,16 +153,26 @@ func GetTransaksiByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetAllTransaksi(w http.ResponseWriter, r *http.Request) {
-	// Query untuk mendapatkan data dari tabel payment dan transaksi
+	// Query untuk mendapatkan data dari tabel transaksi dan payment
 	rows, err := config.DB.Query(`
 	  SELECT
 		t.transaksi_id, t.user_id, t.tiket_id, t.qty, t.harga, t.qrcode, t.updated_at, t.created_at,
-		p.payment_id, p.order_id, p.user_id, p.gross_amount, p.snap_url, p.status, p.created_at
+		COALESCE(p.payment_id, NULL) AS payment_id,
+		COALESCE(p.order_id, NULL) AS order_id,
+		COALESCE(p.user_id, NULL) AS user_id,
+		COALESCE(p.gross_amount, 0) AS gross_amount,
+		COALESCE(p.snap_url, '') AS snap_url,
+		COALESCE(p.status, '') AS status,
+		COALESCE(p.created_at, NULL) AS payment_created_at
 	  FROM transaksi t
-	  INNER JOIN payment p ON t.transaksi_id = p.order_id
+	  LEFT JOIN payment p ON t.transaksi_id = p.order_id
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Error mengambil data transaksi",
+		})
+
 		return
 	}
 	defer rows.Close()
@@ -174,6 +184,11 @@ func GetAllTransaksi(w http.ResponseWriter, r *http.Request) {
 		var transaksi model.Transaksi
 		var payment model.Payment
 
+		var paymentID sql.NullString
+		var orderID sql.NullString
+		var userID sql.NullString
+		var paymentCreatedAt sql.NullTime
+
 		err := rows.Scan(
 			&transaksi.TransaksiID,
 			&transaksi.UserID,
@@ -183,17 +198,31 @@ func GetAllTransaksi(w http.ResponseWriter, r *http.Request) {
 			&transaksi.QRCode,
 			&transaksi.UpdatedAt,
 			&transaksi.CreatedAt,
-			&payment.PaymentID,
-			&payment.OrderID,
-			&payment.UserID,
+			&paymentID, // Menggunakan sql.NullString
+			&orderID,   // Menggunakan sql.NullString
+			&userID,    // Menggunakan sql.NullString
 			&payment.GrossAmount,
 			&payment.SnapURL,
 			&payment.Status,
-			&payment.CreatedAt,
+			&paymentCreatedAt, // Menggunakan sql.NullTime
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		// Konversi NullString dan NullTime ke nilai asli
+		if paymentID.Valid {
+			payment.PaymentID = paymentID.String
+		}
+		if orderID.Valid {
+			payment.OrderID = orderID.String
+		}
+		if userID.Valid {
+			payment.UserID = userID.String
+		}
+		if paymentCreatedAt.Valid {
+			payment.CreatedAt = paymentCreatedAt.Time
 		}
 
 		// Gabungkan data transaksi dan payment ke dalam map

@@ -14,23 +14,49 @@ import (
 func AddTiket(w http.ResponseWriter, r *http.Request) {
 	var tiket model.Tiket
 	if err := json.NewDecoder(r.Body).Decode(&tiket); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Invalid input: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	query := `
-    INSERT INTO tiket (konser_id, nama_tiket, harga, created_at, updated_at)
-    VALUES ($1, $2, $3, NOW(), NOW())
-    RETURNING tiket_id`
+	// Cek apakah jumlah tiket melebihi kapasitas jumlah_tiket pada konser
+	var jumlahTiket, totalTiket int
+
+	// Ambil jumlah_tiket dari konser
+	queryJumlahTiket := `SELECT jumlah_tiket FROM konser WHERE konser_id = $1`
+	err := config.DB.QueryRow(queryJumlahTiket, tiket.KonserID).Scan(&jumlahTiket)
+	if err != nil {
+		http.Error(w, "Gagal mendapatkan informasi jumlah_tiket konser: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hitung total tiket yang sudah ada untuk konser ini
+	queryTotalTiket := `SELECT COALESCE(SUM(jumlah_tiket), 0) FROM tiket WHERE konser_id = $1`
+	err = config.DB.QueryRow(queryTotalTiket, tiket.KonserID).Scan(&totalTiket)
+	if err != nil {
+		http.Error(w, "Gagal menghitung total tiket: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Periksa apakah total tiket ditambah tiket baru melebihi kapasitas
+	if totalTiket+tiket.JumlahTiket > jumlahTiket {
+		http.Error(w, "Jumlah tiket melebihi kapasitas konser", http.StatusBadRequest)
+		return
+	}
+
+	// Insert tiket baru ke dalam database
+	queryInsert := `
+	  INSERT INTO tiket (konser_id, nama_tiket, harga, jumlah_tiket, created_at, updated_at)
+	  VALUES ($1, $2, $3, $4, NOW(), NOW())
+	  RETURNING tiket_id`
 
 	var id string
-	err := config.DB.QueryRow(query, tiket.KonserID, tiket.NamaTiket, tiket.Harga).Scan(&id)
+	err = config.DB.QueryRow(queryInsert, tiket.KonserID, tiket.NamaTiket, tiket.Harga, tiket.JumlahTiket).Scan(&id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Gagal menambahkan tiket: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Return the newly created ID in the response
+	// Kirim response sukses
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Tiket added successfully",
@@ -104,8 +130,7 @@ func GetTiket(w http.ResponseWriter, r *http.Request) {
 func GetTiketByID(w http.ResponseWriter, r *http.Request) {
 	// Mengambil tiket_id dari URL parameter
 	tiketID := mux.Vars(r)["id"]
-  
-  
+
 	// Menjalankan query untuk mengambil tiket berdasarkan tiket_id
 	row := config.DB.QueryRow(`
 	  SELECT
@@ -124,88 +149,122 @@ func GetTiketByID(w http.ResponseWriter, r *http.Request) {
 	  WHERE
 		t.tiket_id = $1
 	`, tiketID)
-  
-  
+
 	// Menyiapkan variabel untuk menyimpan hasil query
 	var tiket model.Tiket
 	var konser model.Konser
-  
-  
+
 	// Melakukan pemindaian hasil query ke dalam variabel tiket dan konser
 	err := row.Scan(
-	  &tiket.TiketID,
-	  &tiket.KonserID,
-	  &tiket.NamaTiket,
-	  &tiket.JumlahTiket,
-	  &tiket.Harga,
-	  &tiket.CreatedAt,
-	  &tiket.UpdatedAt,
-	  &konser.NamaKonser,
+		&tiket.TiketID,
+		&tiket.KonserID,
+		&tiket.NamaTiket,
+		&tiket.JumlahTiket,
+		&tiket.Harga,
+		&tiket.CreatedAt,
+		&tiket.UpdatedAt,
+		&konser.NamaKonser,
 	)
 	if err != nil {
-	  if err == sql.ErrNoRows {
-		http.Error(w, "Tiket tidak ditemukan", http.StatusNotFound)
-	  } else {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	  }
-	  return
+		if err == sql.ErrNoRows {
+			http.Error(w, "Tiket tidak ditemukan", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
 	}
-  
-  
+
 	// Membuat response untuk tiket dengan hanya menampilkan nama konser
 	response := struct {
-	  model.Tiket
-	  Konser string `json:"konser"`
+		model.Tiket
+		Konser string `json:"konser"`
 	}{
-	  Tiket:  tiket,
-	  Konser: konser.NamaKonser,
+		Tiket:  tiket,
+		Konser: konser.NamaKonser,
 	}
-  
-  
+
 	// Mengirimkan response dalam format JSON
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-  }  
+}
 
 func UpdateTiket(w http.ResponseWriter, r *http.Request) {
+	// Ambil tiket_id dari parameter URL
 	vars := mux.Vars(r)
-	idStr, ok := vars["id"]
-	if !ok {
-		http.Error(w, "ID not provided", http.StatusBadRequest)
+	tiketID := vars["id"]
+	if tiketID == "" {
+		http.Error(w, "Parameter tiket_id is required", http.StatusBadRequest)
 		return
 	}
 
+	// Decode input JSON ke struct
 	var tiket model.Tiket
 	if err := json.NewDecoder(r.Body).Decode(&tiket); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Invalid input: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	query := `
+	// Cek apakah tiket yang akan diupdate ada di database
+	var oldJumlahTiket, konserID string
+	queryCheckTiket := `SELECT konser_id, jumlah_tiket FROM tiket WHERE tiket_id = $1`
+	err := config.DB.QueryRow(queryCheckTiket, tiketID).Scan(&konserID, &oldJumlahTiket)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Tiket not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to retrieve tiket: "+err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Cek kapasitas tiket konser
+	var jumlahTiket, totalTiket int
+
+	// Ambil jumlah_tiket dari konser
+	queryJumlahTiket := `SELECT jumlah_tiket FROM konser WHERE konser_id = $1`
+	err = config.DB.QueryRow(queryJumlahTiket, konserID).Scan(&jumlahTiket)
+	if err != nil {
+		http.Error(w, "Gagal mendapatkan informasi jumlah_tiket konser: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hitung total tiket tanpa memperhitungkan tiket yang akan diupdate
+	queryTotalTiket := `SELECT COALESCE(SUM(jumlah_tiket), 0) FROM tiket WHERE konser_id = $1 AND tiket_id != $2`
+	err = config.DB.QueryRow(queryTotalTiket, konserID, tiketID).Scan(&totalTiket)
+	if err != nil {
+		http.Error(w, "Gagal menghitung total tiket: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Periksa apakah total tiket ditambah tiket baru melebihi kapasitas
+	if totalTiket+tiket.JumlahTiket > jumlahTiket {
+		http.Error(w, "Jumlah tiket melebihi kapasitas konser", http.StatusBadRequest)
+		return
+	}
+
+	// Update tiket di database
+	queryUpdate := `
 	  UPDATE tiket
-	  SET nama_tiket=$1, harga=$2, updated_at=NOW()
-	  WHERE tiket_id=$3`
-
-	result, err := config.DB.Exec(query, tiket.NamaTiket, tiket.Harga, idStr)
+	  SET nama_tiket = $1, harga = $2, jumlah_tiket = $3, updated_at = NOW()
+	  WHERE tiket_id = $4
+	`
+	result, err := config.DB.Exec(queryUpdate, tiket.NamaTiket, tiket.Harga, tiket.JumlahTiket, tiketID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to update tiket: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		http.Error(w, "No rows were updated", http.StatusNotFound)
+		http.Error(w, "No rows updated. Please check the tiket_id.", http.StatusBadRequest)
 		return
 	}
 
+	// Kirim response sukses
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Tiket updated successfully",
+		"id":      tiketID,
 	})
 }
 
