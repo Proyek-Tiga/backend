@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"project-tiket/config"
 	"project-tiket/model"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 )
 
@@ -331,4 +333,102 @@ func GetTiketByKonser(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(tikets); err != nil {
 		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func GetTiketByUser(w http.ResponseWriter, r *http.Request) {
+	// Ambil Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header is missing", http.StatusUnauthorized)
+		return
+	}
+	// Ekstrak token dari "Bearer <token>"
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Klaim untuk menyimpan informasi dari token
+	claims := &Claims{} // Pastikan struct Claims sudah dibuat sesuai kebutuhan
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil // Sesuaikan dengan secret key JWT Anda
+	})
+	if err != nil || !token.Valid {
+		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+
+	// Ambil user_id dari klaim
+	userID := claims.UserID
+	if userID == "" {
+		http.Error(w, "User ID not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	// Query untuk mendapatkan tiket berdasarkan user dan konser_id
+	query := `
+	  SELECT
+		t.tiket_id,
+		t.konser_id,
+		t.nama_tiket,
+		t.jumlah_tiket,
+		t.harga,
+		t.created_at,
+		t.updated_at,
+		k.nama_konser
+	  FROM
+		tiket t
+	  JOIN
+		konser k ON t.konser_id = k.konser_id
+	  WHERE
+		k.user_id = $1
+	`
+
+	// Jalankan query
+	rows, err := config.DB.Query(query, userID)
+	if err != nil {
+		http.Error(w, "Failed to execute query: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Struct untuk tiket response
+	type TiketResponse struct {
+		TiketID     string  `json:"tiket_id"`
+		KonserID    string  `json:"konser_id"`
+		NamaTiket   string  `json:"nama_tiket"`
+		JumlahTiket int     `json:"jumlah_tiket"`
+		Harga       float64 `json:"harga"`
+		CreatedAt   string  `json:"created_at"`
+		UpdatedAt   string  `json:"updated_at"`
+		NamaKonser  string  `json:"nama_konser"`
+	}
+
+	var tiketData []TiketResponse
+
+	// Parsing hasil query
+	for rows.Next() {
+		var tiket TiketResponse
+		err := rows.Scan(
+			&tiket.TiketID,
+			&tiket.KonserID,
+			&tiket.NamaTiket,
+			&tiket.JumlahTiket,
+			&tiket.Harga,
+			&tiket.CreatedAt,
+			&tiket.UpdatedAt,
+			&tiket.NamaKonser,
+		)
+		if err != nil {
+			http.Error(w, "Failed to scan result: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tiketData = append(tiketData, tiket)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Failed to process results: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Kirimkan hasil dalam bentuk JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tiketData)
 }
