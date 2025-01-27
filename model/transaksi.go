@@ -9,6 +9,7 @@ type Transaksi struct {
 	Qty         int       `json:"qty"`
 	Harga       int       `json:"harga"`
 	QRCode      string    `json:"qrcode"`
+	Status      string    `json:"status"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	CreatedAt   time.Time `json:"created_at"`
 }

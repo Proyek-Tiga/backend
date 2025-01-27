@@ -9,11 +9,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"project-tiket/config"
 	"project-tiket/model"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -32,13 +34,14 @@ func CreateTransaksi(w http.ResponseWriter, r *http.Request) {
 
 	// Generate UUID untuk transaksi
 	transaksi.TransaksiID = uuid.NewString()
+	transaksi.Status = "pending"
 	transaksi.CreatedAt = time.Now()
 	transaksi.UpdatedAt = time.Now()
 
 	// Insert ke database
 	query := `
-		INSERT INTO transaksi (transaksi_id, user_id, tiket_id, qty, harga, updated_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	  INSERT INTO transaksi (transaksi_id, user_id, tiket_id, qty, harga, updated_at, created_at)
+	  VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err = config.DB.Exec(query, transaksi.TransaksiID, transaksi.UserID, transaksi.TiketID, transaksi.Qty, transaksi.Harga, transaksi.UpdatedAt, transaksi.CreatedAt)
 	if err != nil {
 		http.Error(w, "Gagal membuat transaksi: "+err.Error(), http.StatusInternalServerError)
@@ -243,4 +246,182 @@ func GetAllTransaksi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(result)
+}
+
+func GetETiket(w http.ResponseWriter, r *http.Request) {
+	// Ambil Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header is missing", http.StatusUnauthorized)
+		return
+	}
+
+	// Ekstrak token dari "Bearer <token>"
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Klaim untuk menyimpan informasi dari token
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil // Sesuaikan `jwtKey` dengan secret key JWT Anda
+	})
+	if err != nil || !token.Valid {
+		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+
+	// Ambil user_id dari klaim
+	userID := claims.UserID // Pastikan klaim `UserID` sesuai dengan struktur Anda
+	if userID == "" {
+		http.Error(w, "User ID not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	// Query untuk mendapatkan data e-Tiket
+	query := `
+	  SELECT
+		u.name AS user_name,
+		k.nama_konser AS konser_name,
+		tk.nama_tiket,
+		k.tanggal_konser,
+		l.lokasi AS konser_location,
+		CASE
+		  WHEN t.status = 'settlement' THEN t.qrcode
+		  ELSE ''
+		END AS qr_code,
+		t.status AS transaksi_status
+	  FROM transaksi t
+	  JOIN users u ON t.user_id = u.user_id
+	  JOIN tiket tk ON t.tiket_id = tk.tiket_id
+	  JOIN konser k ON tk.konser_id = k.konser_id
+	  JOIN lokasi l ON k.lokasi_id = l.lokasi_id
+	  WHERE t.user_id = $1;
+	`
+
+	// Jalankan query
+	rows, err := config.DB.Query(query, userID)
+	if err != nil {
+		http.Error(w, "Failed to execute query: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Parsing hasil query
+	var tiketList []model.ETiket
+	for rows.Next() {
+		var tiket model.ETiket
+		if err := rows.Scan(
+			&tiket.UserName,
+			&tiket.KonserName,
+			&tiket.TiketName,
+			&tiket.TanggalKonser,
+			&tiket.KonserLocation,
+			&tiket.QRCode,
+			&tiket.TransaksiStatus,
+		); err != nil {
+			http.Error(w, "Failed to scan result: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tiketList = append(tiketList, tiket)
+	}
+
+	// Cek apakah ada data
+	if len(tiketList) == 0 {
+		http.Error(w, "No tickets found", http.StatusNotFound)
+		return
+	}
+
+	// Kirimkan hasil dalam bentuk JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tiketList)
+}
+
+func GetTransaksiPenyelenggara(w http.ResponseWriter, r *http.Request) {
+	// Ambil Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header is missing", http.StatusUnauthorized)
+		return
+	}
+
+	// Ekstrak token dari "Bearer <token>"
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Klaim untuk menyimpan informasi dari token
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil // Sesuaikan `jwtKey` dengan secret key JWT Anda
+	})
+	if err != nil || !token.Valid {
+		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+
+	// Ambil user_id dari klaim
+	userID := claims.UserID // Pastikan klaim `UserID` sesuai dengan struktur Anda
+	if userID == "" {
+		http.Error(w, "User ID not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	// Query untuk mendapatkan transaksi penyelenggara
+	query := `
+	  SELECT
+		t.transaksi_id,
+		t.tiket_id,
+		u_penyelenggara.user_id AS penyelenggara_id,
+		u_penyelenggara.name AS penyelenggara_name,
+		k.nama_konser AS konser_name,
+		u_pembeli.user_id AS pembeli_id,
+		u_pembeli.name AS pembeli_name,
+		t.status AS transaksi_status,
+		t.qrcode AS qr_code,
+		t.created_at AS transaksi_date
+	  FROM transaksi t
+	  JOIN tiket tk ON t.tiket_id = tk.tiket_id
+	  JOIN konser k ON tk.konser_id = k.konser_id
+	  JOIN users u_penyelenggara ON k.user_id = u_penyelenggara.user_id
+	  JOIN users u_pembeli ON t.user_id = u_pembeli.user_id
+	  WHERE u_penyelenggara.user_id = $1
+	  ORDER BY t.created_at DESC;
+	`
+
+	// Jalankan query
+	rows, err := config.DB.Query(query, userID)
+	if err != nil {
+		http.Error(w, "Failed to execute query: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Parsing hasil query
+	var transaksiList []model.TransaksiPenyelenggara
+	for rows.Next() {
+		var transaksi model.TransaksiPenyelenggara
+		if err := rows.Scan(
+			&transaksi.TransaksiID,
+			&transaksi.TiketID,
+			&transaksi.PenyelenggaraID,
+			&transaksi.PenyelenggaraName,
+			&transaksi.KonserName,
+			&transaksi.PembeliID,
+			&transaksi.PembeliName,
+			&transaksi.TransaksiStatus,
+			&transaksi.QRCode,
+			&transaksi.TransaksiDate,
+		); err != nil {
+			http.Error(w, "Failed to scan result: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		transaksiList = append(transaksiList, transaksi)
+	}
+
+	// Cek apakah ada data
+	if len(transaksiList) == 0 {
+		http.Error(w, "No transactions found", http.StatusNotFound)
+		return
+	}
+
+	// Kirimkan hasil dalam bentuk JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(transaksiList)
 }

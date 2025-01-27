@@ -64,9 +64,13 @@ func SetupRouter() *mux.Router {
 	router.HandleFunc("/api/transaksi", controller.JWTAuth(controller.CreateTransaksi)).Methods("POST")
 	router.HandleFunc("/api/transaksi/{id}", controller.GetTransaksiByID).Methods("GET")
 	router.HandleFunc("/api/transaksi", controller.GetAllTransaksi).Methods("GET")
+	router.HandleFunc("/api/transaksi-penyelenggara", controller.JWTAuth(controller.GetTransaksiPenyelenggara)).Methods("GET")
 
 	// PAYMENT
 	router.HandleFunc("/api/payment/{transaksi_id}", controller.JWTAuth(controller.CreatePayment)).Methods("POST")
 	router.HandleFunc("/api/webhook/midtrans", controller.MidtransWebhookHandler).Methods("POST")
+
+	// E-Ticket
+	router.HandleFunc("/api/e-ticket", controller.JWTAuth(controller.GetETiket)).Methods("GET")
 	return router
 }

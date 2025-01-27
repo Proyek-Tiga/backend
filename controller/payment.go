@@ -42,9 +42,9 @@ func CreatePayment(w http.ResponseWriter, r *http.Request) {
 	// Ambil transaksi dari database berdasarkan OrderID yang diberikan
 	var transaction model.Transaksi
 	query := `
-		SELECT transaksi_id, user_id, tiket_id, qty, harga, created_at, updated_at 
-		FROM transaksi 
-		WHERE transaksi_id = $1`
+    SELECT transaksi_id, user_id, tiket_id, qty, harga, created_at, updated_at
+    FROM transaksi
+    WHERE transaksi_id = $1`
 	err := config.DB.QueryRow(query, paymentReq.OrderID).Scan(
 		&transaction.TransaksiID,
 		&transaction.UserID,
@@ -88,13 +88,13 @@ func CreatePayment(w http.ResponseWriter, r *http.Request) {
 
 	// Tambahkan snap_url dan status pembayaran
 	paymentReq.SnapURL = snapResp.RedirectURL
-	paymentReq.Status = "Pending"
+	paymentReq.Status = "pending"
 	paymentReq.CreatedAt = time.Now()
 
 	// Simpan data pembayaran ke database
 	insertQuery := `
-		INSERT INTO payment (order_id, user_id, gross_amount, snap_url, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+    INSERT INTO payment (order_id, user_id, gross_amount, snap_url, status, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err = config.DB.Exec(insertQuery, paymentReq.OrderID, paymentReq.UserID, paymentReq.GrossAmount, paymentReq.SnapURL, paymentReq.Status, paymentReq.CreatedAt)
 	if err != nil {
 		http.Error(w, "Gagal menyimpan pembayaran", http.StatusInternalServerError)
