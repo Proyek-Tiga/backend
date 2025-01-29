@@ -363,7 +363,7 @@ func UpdateKonserStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pastikan status yang diberikan valid
-	if status.Status != "pending" && status.Status != "approved" {
+	if status.Status != "pending" && status.Status != "approved" && status.Status != "rejected" {
 		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
@@ -376,19 +376,13 @@ func UpdateKonserStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update status konser
-	query := `UPDATE konser SET status = $1 WHERE konser_id = $2 AND status = 'pending'`
+	query := `UPDATE konser SET status = $1 WHERE konser_id = $2`
 	_, err = tx.Exec(query, status.Status, konserID)
 	if err != nil {
 		tx.Rollback()
 		http.Error(w, "Failed to update status: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// // Jika status yang diberikan adalah "approved", lakukan penanganan lebih lanjut (misalnya menambah tiket atau tindakan lainnya)
-	// if status.Status == "approved" {
-	// 	// Anda bisa menambahkan logika lebih lanjut untuk "approved" di sini
-	// 	// Misalnya, menambahkan data ke tabel lain jika perlu
-	// }
 
 	// Commit transaksi jika semuanya berjalan lancar
 	if err := tx.Commit(); err != nil {

@@ -310,29 +310,50 @@ func DeleteTiket(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTiketByKonser(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, ok := vars["konser_id"]
-	if !ok {
-		http.Error(w, "ID not provided", http.StatusBadRequest)
-		return
-	}
+    vars := mux.Vars(r)
+    id, ok := vars["konser_id"]
+    if !ok {
+        http.Error(w, "ID not provided", http.StatusBadRequest)
+        return
+    }
 
-	// Query database untuk mendapatkan data tiket berdasarkan UUID konser
-	var tikets model.Tiket
-	err := config.DB.QueryRow(
-		"SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket WHERE konser_id = $1",
-		id,
-	).Scan(&tikets.TiketID, &tikets.KonserID, &tikets.NamaTiket, &tikets.JumlahTiket, &tikets.Harga, &tikets.CreatedAt, &tikets.UpdatedAt)
-	if err != nil {
-		http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
 
-	// Berikan respons dalam format JSON
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(tikets); err != nil {
-		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
-	}
+    // Query database untuk mendapatkan daftar tiket berdasarkan konser_id
+    rows, err := config.DB.Query(
+        "SELECT tiket_id, konser_id, nama_tiket, jumlah_tiket, harga, created_at, updated_at FROM tiket WHERE konser_id = $1",
+        id,
+    )
+    if err != nil {
+        http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
+
+
+    var tikets []model.Tiket
+
+
+    for rows.Next() {
+        var tiket model.Tiket
+        err := rows.Scan(&tiket.TiketID, &tiket.KonserID, &tiket.NamaTiket, &tiket.JumlahTiket, &tiket.Harga, &tiket.CreatedAt, &tiket.UpdatedAt)
+        if err != nil {
+            http.Error(w, "Failed to scan row: "+err.Error(), http.StatusInternalServerError)
+            return
+        }
+        tikets = append(tikets, tiket)
+    }
+
+
+    // Periksa jika tidak ada data yang ditemukan
+    if len(tikets) == 0 {
+        http.Error(w, "No tickets found", http.StatusNotFound)
+        return
+    }
+
+
+    // Berikan respons dalam format JSON
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(tikets)
 }
 
 func GetTiketByUser(w http.ResponseWriter, r *http.Request) {
